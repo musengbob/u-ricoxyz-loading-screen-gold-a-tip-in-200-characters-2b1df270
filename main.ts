@@ -19,8 +19,24 @@ import { join, resolve } from "node:path";
 const TIP =
   "Tip: when your AI agent rewrites the same file for the third time, take the keyboard back. It's not iterating, it's stalling, and you're the one paying for the tokens.";
 
-const MAX_CHARS = 200;
-const OUTPUT_FILE = "entry.txt";
+const GATE = { MIN_CHARS: 1, MAX_CHARS: 200, OUTPUT_FILE: "entry.txt" };
+
+function buildEntryLine(): string {
+  return TIP;
+}
+
+function validateTip(text: string): void {
+  const charCount = [...text].length;
+  if (charCount < GATE.MIN_CHARS || charCount > GATE.MAX_CHARS) {
+    fail(`tip must be ${GATE.MIN_CHARS} to ${GATE.MAX_CHARS} characters, got ${charCount}`);
+  }
+  if (text.trim().length === 0) {
+    fail("tip must not be only whitespace");
+  }
+  if (text.includes("\n") || text.includes("\r")) {
+    fail("tip must be a single line");
+  }
+}
 
 function fail(message: string): never {
   console.error(`error: ${message}`);
@@ -36,37 +52,32 @@ function resolveOutputPath(): string {
   return join(process.cwd(), "output");
 }
 
-function main(): void {
-  // Count characters as code points: the gate counts characters in UTF-8
-  // text, and a code-point count is the honest measure for that.
-  const charCount = [...TIP].length;
-
-  // Validate the tip before writing anything.
-  if (charCount === 0 || charCount > MAX_CHARS) {
-    fail(`tip must be 1 to ${MAX_CHARS} characters, got ${charCount}`);
-  }
-  if (TIP.trim().length === 0) {
-    fail("tip must not be only whitespace");
-  }
-  if (TIP.includes("\n") || TIP.includes("\r")) {
-    fail("tip must be a single line");
-  }
-
-  const outDir = resolveOutputPath();
+function writeEntry(outDir: string, text: string): string {
   mkdirSync(outDir, { recursive: true });
-
-  const outPath = join(outDir, OUTPUT_FILE);
+  const outPath = join(outDir, GATE.OUTPUT_FILE);
   // No trailing newline: the file is exactly the tip, nothing else.
-  writeFileSync(outPath, TIP, "utf8");
+  writeFileSync(outPath, text, "utf8");
 
   // Read back byte-identical: what the judge reads must be exactly the tip.
   const readBack = readFileSync(outPath, "utf8");
-  if (readBack !== TIP) {
+  if (readBack !== text) {
     fail("read-back mismatch: entry.txt does not match the tip exactly");
   }
-  if ([...readBack].length !== charCount) {
+  if ([...readBack].length !== [...text].length) {
     fail("read-back mismatch: entry.txt character count changed");
   }
+  return outPath;
+}
+
+function main(): void {
+  // Count characters as code points: the gate counts characters in UTF-8
+  // text, and a code-point count is the honest measure for that.
+  const line = buildEntryLine();
+  validateTip(line);
+  const charCount = [...line].length;
+
+  const outDir = resolveOutputPath();
+  const outPath = writeEntry(outDir, line);
 
   console.log(`wrote ${outPath} (${charCount} characters)`);
 }
